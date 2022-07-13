@@ -14,7 +14,8 @@ type UnionDirFsIFace interface {
 	GetPath(elem ...string) (string, error)
 }
 
-// NewUnionDirFS is a virtual file system for merging multiple directories with priority
+// NewUnionDirFS is a virtual file system for merging multiple directories
+// with priority
 //
 // dirs contains the union directories and the previous one has higher priority
 func NewUnionDirFS(dirs ...string) UnionDirFS {
@@ -34,7 +35,8 @@ type RootedFS struct {
 
 // UnionDirFS is a simple union directory file system
 //
-// it unions multiple directory to be one directory with priority based on the order of Dirs
+// it unions multiple directory to be one directory with priority based on the
+// order of Dirs
 type UnionDirFS struct {
 	Dirs []RootedFS
 }
@@ -54,7 +56,7 @@ func (u UnionDirFS) Open(name string) (fs.File, error) {
 		}
 		return f, nil
 	}
-	return nil, fs.ErrNotExist
+	return nil, &fs.PathError{Op: "open", Err: fs.ErrNotExist, Path: name}
 }
 
 // Path returns the path of the named file or directory under the FS
@@ -74,17 +76,17 @@ func (u UnionDirFS) GetPath(elem ...string) (string, error) {
 		}
 		defer file.Close()
 		// got the first existing file path and break
+		// return the path with current OS separator
 		return filepath.Join(dir.Root, pathSuffix), nil
 	}
-	// return the path with current OS separator
 	return "", fs.ErrNotExist
 }
 
-// ReadDir implements the ReadDirFile interface
+// ReadDir implements the ReadDirFS interface
 //
 // traverse all union directories and return all existing DirEntries
 func (u UnionDirFS) ReadDir(name string) ([]fs.DirEntry, error) {
-	isVisited := make(map[string]bool)
+	isVisited := make(map[string]struct{})
 	var newEntries []fs.DirEntry
 	// traverse multiple union directories
 	for _, dir := range u.Dirs {
@@ -109,10 +111,11 @@ func (u UnionDirFS) ReadDir(name string) ([]fs.DirEntry, error) {
 		}
 
 		// skip repeated entry name
-		// it is possible that multiple union directories have the entries with the same name
+		// it is possible that multiple union directories have the entries
+		// with the same name
 		for _, entry := range entries {
 			if _, ok := isVisited[entry.Name()]; !ok {
-				isVisited[entry.Name()] = true
+				isVisited[entry.Name()] = struct{}{}
 				newEntries = append(newEntries, entry)
 			}
 		}

@@ -17,7 +17,8 @@ var (
 	userCacheDir  = os.UserCacheDir
 	getenv        = os.Getenv
 
-	// systemLibexec directory for binaries not meant to be executed directly by users' shell or scripts
+	// systemLibexec directory for binaries not meant to be executed directly
+	// by users' shell or scripts
 	systemLibexec string
 	// systemConfig directory for configurations
 	systemConfig string
@@ -36,9 +37,8 @@ func init() {
 	LoadPath()
 }
 
-// LoadPath function defines the directory for NotationLibexec, NotationConfig, NotationCache
-//
-// User MUST call this function before access any path.
+// LoadPath function defines the directory for
+// NotationLibexec, NotationConfig, NotationCache
 func LoadPath() {
 	var err error
 	// set system config and libexec
@@ -82,7 +82,8 @@ func LoadPath() {
 	userCache = filepath.Join(userCache, notation)
 
 	// set unionDirFS
-	// TODO(JeyJeyGao): The user/system directory priority may change later (https://github.com/notaryproject/notation/issues/203)
+	// TODO(JeyJeyGao): The user/system directory priority may change later
+	// (https://github.com/notaryproject/notation/issues/203)
 	notationPath = PathManager{
 		ConfigFS:  NewUnionDirFS(userConfig, systemConfig),
 		CacheFS:   NewUnionDirFS(userCache),

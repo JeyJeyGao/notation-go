@@ -11,10 +11,11 @@ import (
 
 	"github.com/notaryproject/notation-core-go/signature"
 	"github.com/notaryproject/notation-go/internal/pkix"
-	"github.com/notaryproject/notation-go/internal/plugin"
 	"github.com/notaryproject/notation-go/internal/slice"
 	trustpolicyInternal "github.com/notaryproject/notation-go/internal/trustpolicy"
 	"github.com/notaryproject/notation-go/notation"
+	"github.com/notaryproject/notation-go/plugin"
+	"github.com/notaryproject/notation-go/plugin/proto"
 	sig "github.com/notaryproject/notation-go/signature"
 	"github.com/notaryproject/notation-go/verifier/trustpolicy"
 )
@@ -245,12 +246,8 @@ func verifyX509TrustedIdentities(certs []*x509.Certificate, trustPolicy *trustpo
 	return fmt.Errorf("signing certificate from the digital signature does not match the X.509 trusted identities %q defined in the trust policy %q", trustedX509Identities, trustPolicy.Name)
 }
 
-func (v *verifier) executePlugin(ctx context.Context, trustPolicy *trustpolicy.TrustPolicy, capabilitiesToVerify []plugin.VerificationCapability, envelopeContent *signature.EnvelopeContent, pluginConfig map[string]string) (*plugin.VerifySignatureResponse, error) {
+func (v *verifier) executePlugin(ctx context.Context, verificationPlugin plugin.VerifyPlugin, trustPolicy *trustpolicy.TrustPolicy, capabilitiesToVerify []proto.Capability, envelopeContent *signature.EnvelopeContent, pluginConfig map[string]string) (*proto.VerifySignatureResponse, error) {
 	signerInfo, payloadInfo := &envelopeContent.SignerInfo, envelopeContent.Payload
-	verificationPluginName, err := getVerificationPlugin(signerInfo)
-	if err != nil {
-		return nil, err
-	}
 	var attributesToProcess []string
 	extendedAttributes := make(map[string]interface{})
 
@@ -270,8 +267,8 @@ func (v *verifier) executePlugin(ctx context.Context, trustPolicy *trustpolicy.T
 		// https://github.com/notaryproject/notation-core-go/issues/38
 	}
 
-	signature := plugin.Signature{
-		CriticalAttributes: plugin.CriticalAttributes{
+	signature := proto.Signature{
+		CriticalAttributes: proto.CriticalAttributes{
 			ContentType:          payloadInfo.ContentType,
 			SigningScheme:        string(signerInfo.SignedAttributes.SigningScheme),
 			Expiry:               &signerInfo.SignedAttributes.Expiry,
@@ -282,32 +279,18 @@ func (v *verifier) executePlugin(ctx context.Context, trustPolicy *trustpolicy.T
 		CertificateChain:      certChain,
 	}
 
-	policy := plugin.TrustPolicy{
+	policy := proto.TrustPolicy{
 		TrustedIdentities:     trustPolicy.TrustedIdentities,
 		SignatureVerification: capabilitiesToVerify,
 	}
 
-	request := &plugin.VerifySignatureRequest{
-		ContractVersion: plugin.ContractVersion,
+	request := &proto.VerifySignatureRequest{
+		ContractVersion: proto.ContractVersion,
 		Signature:       signature,
 		TrustPolicy:     policy,
 		PluginConfig:    pluginConfig,
 	}
-	pluginRunner, err := v.PluginManager.Runner(verificationPluginName)
-	if err != nil {
-		return nil, notation.ErrorVerificationInconclusive{Msg: fmt.Sprintf("error while loading the verification plugin %q: %s", verificationPluginName, err)}
-	}
-	out, err := pluginRunner.Run(ctx, request)
-	if err != nil {
-		return nil, notation.ErrorVerificationInconclusive{Msg: fmt.Sprintf("error while running the verification plugin %q: %s", verificationPluginName, err)}
-	}
-
-	response, ok := out.(*plugin.VerifySignatureResponse)
-	if !ok {
-		return nil, notation.ErrorVerificationInconclusive{Msg: fmt.Sprintf("verification plugin %q returned unexpected response : %q", verificationPluginName, out)}
-	}
-
-	return response, nil
+	return verificationPlugin.VerifySignature(ctx, request)
 }
 
 func getNonPluginExtendedCriticalAttributes(signerInfo *signature.SignerInfo) []signature.Attribute {

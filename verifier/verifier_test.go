@@ -4,15 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/notaryproject/notation-core-go/signature"
 	"github.com/notaryproject/notation-go/dir"
 	"github.com/notaryproject/notation-go/internal/mock"
-	"github.com/notaryproject/notation-go/internal/plugin"
-	"github.com/notaryproject/notation-go/internal/plugin/manager"
 	"github.com/notaryproject/notation-go/notation"
+	"github.com/notaryproject/notation-go/plugin/proto"
 	"github.com/notaryproject/notation-go/verifier/trustpolicy"
 
 	_ "github.com/notaryproject/notation-core-go/signature/cose"
@@ -270,7 +271,7 @@ func assertPluginVerification(scheme signature.SigningScheme, t *testing.T) {
 
 	// verification plugin is not installed
 	pluginManager := mock.PluginManager{}
-	pluginManager.GetPluginError = manager.ErrNotFound
+	pluginManager.GetPluginError = os.ErrNotExist
 
 	v := verifier{
 		TrustPolicyDoc: &policyDocument,
@@ -278,13 +279,13 @@ func assertPluginVerification(scheme signature.SigningScheme, t *testing.T) {
 	}
 	opts := notation.VerifyOptions{ArtifactReference: mock.SampleArtifactUri, SignatureMediaType: "application/jose+json"}
 	_, outcome, err := v.Verify(context.Background(), pluginSigEnv, opts)
-	if err == nil || outcome.Error == nil || outcome.Error.Error() != "error while locating the verification plugin \"plugin-name\", make sure the plugin is installed successfully before verifying the signature. error: plugin not found" {
+	if err == nil || outcome.Error == nil || !strings.Contains(outcome.Error.Error(), pluginManager.GetPluginError.Error()) {
 		t.Fatalf("verification should fail if the verification plugin is not found")
 	}
 
 	// plugin is installed but without verification capabilities
 	pluginManager = mock.PluginManager{}
-	pluginManager.PluginCapabilities = []plugin.Capability{plugin.CapabilitySignatureGenerator}
+	pluginManager.PluginCapabilities = []proto.Capability{proto.CapabilitySignatureGenerator}
 
 	v = verifier{
 		TrustPolicyDoc: &policyDocument,
@@ -298,10 +299,10 @@ func assertPluginVerification(scheme signature.SigningScheme, t *testing.T) {
 
 	// plugin interactions with trusted identity verification success
 	pluginManager = mock.PluginManager{}
-	pluginManager.PluginCapabilities = []plugin.Capability{plugin.CapabilityTrustedIdentityVerifier}
-	pluginManager.PluginRunnerExecuteResponse = &plugin.VerifySignatureResponse{
-		VerificationResults: map[plugin.VerificationCapability]*plugin.VerificationResult{
-			plugin.VerificationCapabilityTrustedIdentity: {
+	pluginManager.PluginCapabilities = []proto.Capability{proto.CapabilityTrustedIdentityVerifier}
+	pluginManager.PluginRunnerExecuteResponse = &proto.VerifySignatureResponse{
+		VerificationResults: map[proto.Capability]*proto.VerificationResult{
+			proto.CapabilityTrustedIdentityVerifier: {
 				Success: true,
 			},
 		},
@@ -320,10 +321,10 @@ func assertPluginVerification(scheme signature.SigningScheme, t *testing.T) {
 
 	// plugin interactions with trusted identity verification failure
 	pluginManager = mock.PluginManager{}
-	pluginManager.PluginCapabilities = []plugin.Capability{plugin.CapabilityTrustedIdentityVerifier}
-	pluginManager.PluginRunnerExecuteResponse = &plugin.VerifySignatureResponse{
-		VerificationResults: map[plugin.VerificationCapability]*plugin.VerificationResult{
-			plugin.VerificationCapabilityTrustedIdentity: {
+	pluginManager.PluginCapabilities = []proto.Capability{proto.CapabilityTrustedIdentityVerifier}
+	pluginManager.PluginRunnerExecuteResponse = &proto.VerifySignatureResponse{
+		VerificationResults: map[proto.Capability]*proto.VerificationResult{
+			proto.CapabilityTrustedIdentityVerifier: {
 				Success: false,
 				Reason:  "i feel like failing today",
 			},
@@ -343,10 +344,10 @@ func assertPluginVerification(scheme signature.SigningScheme, t *testing.T) {
 
 	// plugin interactions with revocation verification success
 	pluginManager = mock.PluginManager{}
-	pluginManager.PluginCapabilities = []plugin.Capability{plugin.CapabilityRevocationCheckVerifier}
-	pluginManager.PluginRunnerExecuteResponse = &plugin.VerifySignatureResponse{
-		VerificationResults: map[plugin.VerificationCapability]*plugin.VerificationResult{
-			plugin.VerificationCapabilityRevocationCheck: {
+	pluginManager.PluginCapabilities = []proto.Capability{proto.CapabilityRevocationCheckVerifier}
+	pluginManager.PluginRunnerExecuteResponse = &proto.VerifySignatureResponse{
+		VerificationResults: map[proto.Capability]*proto.VerificationResult{
+			proto.CapabilityRevocationCheckVerifier: {
 				Success: true,
 			},
 		},
@@ -365,10 +366,10 @@ func assertPluginVerification(scheme signature.SigningScheme, t *testing.T) {
 
 	// plugin interactions with trusted revocation failure
 	pluginManager = mock.PluginManager{}
-	pluginManager.PluginCapabilities = []plugin.Capability{plugin.CapabilityRevocationCheckVerifier}
-	pluginManager.PluginRunnerExecuteResponse = &plugin.VerifySignatureResponse{
-		VerificationResults: map[plugin.VerificationCapability]*plugin.VerificationResult{
-			plugin.VerificationCapabilityRevocationCheck: {
+	pluginManager.PluginCapabilities = []proto.Capability{proto.CapabilityRevocationCheckVerifier}
+	pluginManager.PluginRunnerExecuteResponse = &proto.VerifySignatureResponse{
+		VerificationResults: map[proto.Capability]*proto.VerificationResult{
+			proto.CapabilityRevocationCheckVerifier: {
 				Success: false,
 				Reason:  "i feel like failing today",
 			},
@@ -388,13 +389,13 @@ func assertPluginVerification(scheme signature.SigningScheme, t *testing.T) {
 
 	// plugin interactions with both trusted identity & revocation verification
 	pluginManager = mock.PluginManager{}
-	pluginManager.PluginCapabilities = []plugin.Capability{plugin.CapabilityRevocationCheckVerifier, plugin.CapabilityTrustedIdentityVerifier}
-	pluginManager.PluginRunnerExecuteResponse = &plugin.VerifySignatureResponse{
-		VerificationResults: map[plugin.VerificationCapability]*plugin.VerificationResult{
-			plugin.VerificationCapabilityRevocationCheck: {
+	pluginManager.PluginCapabilities = []proto.Capability{proto.CapabilityRevocationCheckVerifier, proto.CapabilityTrustedIdentityVerifier}
+	pluginManager.PluginRunnerExecuteResponse = &proto.VerifySignatureResponse{
+		VerificationResults: map[proto.Capability]*proto.VerificationResult{
+			proto.CapabilityRevocationCheckVerifier: {
 				Success: true,
 			},
-			plugin.VerificationCapabilityTrustedIdentity: {
+			proto.CapabilityTrustedIdentityVerifier: {
 				Success: true,
 			},
 		},
@@ -414,7 +415,7 @@ func assertPluginVerification(scheme signature.SigningScheme, t *testing.T) {
 	// plugin interactions with skipped revocation
 	policyDocument.TrustPolicies[0].SignatureVerification.Override = map[trustpolicy.ValidationType]trustpolicy.ValidationAction{trustpolicy.TypeRevocation: trustpolicy.ActionSkip}
 	pluginManager = mock.PluginManager{}
-	pluginManager.PluginCapabilities = []plugin.Capability{plugin.CapabilityRevocationCheckVerifier}
+	pluginManager.PluginCapabilities = []proto.Capability{proto.CapabilityRevocationCheckVerifier}
 	pluginManager.PluginRunnerExecuteError = errors.New("revocation plugin should not be invoked when the trust policy skips revocation check")
 
 	v = verifier{
@@ -436,36 +437,12 @@ func assertPluginVerification(scheme signature.SigningScheme, t *testing.T) {
 		t.Fatalf("revocation plugin should not be invoked when the trust policy skips the revocation check. error : %v", outcome.Error)
 	}
 
-	// plugin unexpected response
-	pluginManager = mock.PluginManager{}
-	pluginManager.PluginCapabilities = []plugin.Capability{plugin.CapabilityTrustedIdentityVerifier}
-	pluginManager.PluginRunnerExecuteResponse = "invalid plugin response"
-
-	v = verifier{
-		TrustPolicyDoc: &policyDocument,
-		PluginManager:  pluginManager,
-	}
-	opts = notation.VerifyOptions{ArtifactReference: mock.SampleArtifactUri, SignatureMediaType: "application/jose+json"}
-	trustPolicy, err = (&policyDocument).GetApplicableTrustPolicy(opts.ArtifactReference)
-	if err != nil {
-		t.Fatalf("cannot get trustPolicy")
-	}
-	verificationLevel, _ = trustPolicy.SignatureVerification.GetVerificationLevel()
-	outcome = &notation.VerificationOutcome{
-		VerificationResults: []*notation.ValidationResult{},
-		VerificationLevel:   verificationLevel,
-	}
-	_, outcome, err = v.Verify(context.Background(), pluginSigEnv, opts)
-	if err == nil || outcome.Error == nil || outcome.Error.Error() != "verification plugin \"plugin-name\" returned unexpected response : \"invalid plugin response\"" {
-		t.Fatalf("verification should fail when the verification plugin returns unexpected response. error : %v", outcome.Error)
-	}
-
 	// plugin did not process all extended critical attributes
 	pluginManager = mock.PluginManager{}
-	pluginManager.PluginCapabilities = []plugin.Capability{plugin.CapabilityTrustedIdentityVerifier}
-	pluginManager.PluginRunnerExecuteResponse = &plugin.VerifySignatureResponse{
-		VerificationResults: map[plugin.VerificationCapability]*plugin.VerificationResult{
-			plugin.VerificationCapabilityTrustedIdentity: {
+	pluginManager.PluginCapabilities = []proto.Capability{proto.CapabilityTrustedIdentityVerifier}
+	pluginManager.PluginRunnerExecuteResponse = &proto.VerifySignatureResponse{
+		VerificationResults: map[proto.Capability]*proto.VerificationResult{
+			proto.CapabilityTrustedIdentityVerifier: {
 				Success: true,
 			},
 		},
@@ -484,9 +461,9 @@ func assertPluginVerification(scheme signature.SigningScheme, t *testing.T) {
 
 	// plugin returned empty result for a capability
 	pluginManager = mock.PluginManager{}
-	pluginManager.PluginCapabilities = []plugin.Capability{plugin.CapabilityTrustedIdentityVerifier}
-	pluginManager.PluginRunnerExecuteResponse = &plugin.VerifySignatureResponse{
-		VerificationResults: map[plugin.VerificationCapability]*plugin.VerificationResult{},
+	pluginManager.PluginCapabilities = []proto.Capability{proto.CapabilityTrustedIdentityVerifier}
+	pluginManager.PluginRunnerExecuteResponse = &proto.VerifySignatureResponse{
+		VerificationResults: map[proto.Capability]*proto.VerificationResult{},
 		ProcessedAttributes: []interface{}{mock.PluginExtendedCriticalAttribute.Key},
 	}
 

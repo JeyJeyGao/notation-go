@@ -112,6 +112,16 @@ func (s *genericSigner) Sign(ctx context.Context, desc ocispec.Descriptor, opts 
 		SigningAgent:  signingAgentId,
 	}
 
+	if opts.TagSigning != "" {
+		signReq.ExtendedSignedAttributes = append(signReq.ExtendedSignedAttributes,
+			signature.Attribute{
+				Key:      "TagSigning",
+				Critical: true,
+				Value:    opts.TagSigning,
+			},
+		)
+	}
+
 	// Add expiry only if ExpiryDuration is not zero
 	if opts.ExpiryDuration != 0 {
 		signReq.Expiry = signReq.SigningTime.Add(opts.ExpiryDuration)

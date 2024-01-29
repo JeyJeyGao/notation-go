@@ -54,6 +54,8 @@ type SignerSignOptions struct {
 
 	// SigningAgent sets the signing agent name
 	SigningAgent string
+
+	TagSigning string
 }
 
 // Signer is a generic interface for signing an artifact.
@@ -123,6 +125,17 @@ func Sign(ctx context.Context, signer Signer, repo registry.Repository, signOpts
 		logger.Warnf("Always sign the artifact using digest(`@sha256:...`) rather than a tag(`:%s`) because tags are mutable and a tag reference can point to a different artifact than the one signed", artifactRef)
 		logger.Infof("Resolved artifact tag `%s` to digest `%s` before signing", artifactRef, targetDesc.Digest.String())
 	}
+
+	if signOpts.TagSigning != "" {
+		tagTargetDesc, err := repo.Resolve(ctx, signOpts.TagSigning)
+		if err != nil {
+			return ocispec.Descriptor{}, fmt.Errorf("failed to resolve tag signing reference: %w", err)
+		}
+		if tagTargetDesc.Digest.String() != targetDesc.Digest.String() {
+			return ocispec.Descriptor{}, fmt.Errorf("tag signing target %s does not match the resolved digest %s", signOpts.TagSigning, targetDesc.Digest.String())
+		}
+	}
+
 	descToSign, err := addUserMetadataToDescriptor(ctx, targetDesc, signOpts.UserMetadata)
 	if err != nil {
 		return ocispec.Descriptor{}, err

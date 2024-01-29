@@ -43,6 +43,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"golang.org/x/mod/semver"
 	"oras.land/oras-go/v2/content"
+	orasRegistry "oras.land/oras-go/v2/registry"
 )
 
 // verifier implements notation.Verifier and notation.verifySkipper
@@ -154,7 +155,7 @@ func (v *verifier) Verify(ctx context.Context, desc ocispec.Descriptor, signatur
 		logger.Debug("Skipping signature verification")
 		return outcome, nil
 	}
-	err = v.processSignature(ctx, signature, envelopeMediaType, trustPolicy, pluginConfig, outcome)
+	err = v.processSignature(ctx, signature, envelopeMediaType, trustPolicy, opts, pluginConfig, outcome)
 
 	if err != nil {
 		outcome.Error = err
@@ -185,7 +186,7 @@ func (v *verifier) Verify(ctx context.Context, desc ocispec.Descriptor, signatur
 	return outcome, outcome.Error
 }
 
-func (v *verifier) processSignature(ctx context.Context, sigBlob []byte, envelopeMediaType string, trustPolicy *trustpolicy.TrustPolicy, pluginConfig map[string]string, outcome *notation.VerificationOutcome) error {
+func (v *verifier) processSignature(ctx context.Context, sigBlob []byte, envelopeMediaType string, trustPolicy *trustpolicy.TrustPolicy, opts notation.VerifierVerifyOptions, pluginConfig map[string]string, outcome *notation.VerificationOutcome) error {
 	logger := log.GetLogger(ctx)
 
 	// verify integrity first. notation will always verify integrity no matter
@@ -196,6 +197,27 @@ func (v *verifier) processSignature(ctx context.Context, sigBlob []byte, envelop
 	if integrityResult.Error != nil {
 		logVerificationResult(logger, integrityResult)
 		return integrityResult.Error
+	}
+
+	for _, attr := range envContent.SignerInfo.SignedAttributes.ExtendedAttributes {
+		if attr.Key == "TagSigning" {
+			if !attr.Critical {
+				return fmt.Errorf("extended attribute %q is not critical", attr.Key)
+			}
+
+			// require tag matching
+			ref, err := orasRegistry.ParseReference(opts.ArtifactReference)
+			if err != nil {
+				return err
+			}
+
+			if err := ref.ValidateReferenceAsTag(); err == nil {
+				// reference is a tag
+				if ref.Reference != attr.Value.(string) {
+					return fmt.Errorf("tag mismatch: %q != %q", ref.Reference, attr.Value)
+				}
+			}
+		}
 	}
 
 	// check if we need to verify using a plugin
@@ -433,7 +455,6 @@ func verifyIntegrity(sigBlob []byte, envelopeMediaType string, outcome *notation
 			Action: outcome.VerificationLevel.Enforcement[trustpolicy.TypeIntegrity],
 		}
 	}
-
 	// integrity has been verified successfully
 	return envContent, &notation.ValidationResult{
 		Type:   trustpolicy.TypeIntegrity,

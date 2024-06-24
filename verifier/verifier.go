@@ -86,7 +86,7 @@ func NewWithOptions(trustPolicy *trustpolicy.Document, trustStore truststore.X50
 	revocationClient := opts.RevocationClient
 	if revocationClient == nil {
 		var err error
-		revocationClient, err = revocation.New(&http.Client{Timeout: 2 * time.Second})
+		revocationClient, err = revocation.New(&http.Client{})
 		if err != nil {
 			return nil, err
 		}
